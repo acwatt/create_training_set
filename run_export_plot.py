@@ -1,13 +1,18 @@
 import os
 import time
+from datetime import datetime
 import subprocess as sp
+import shutil
+import edit_config as EC
 
 # MODE: 1=drone, 2=satellite, 3=drone+satellite
-MODE = 2
+MODE = 3
 # LABELS: 1=custom labels, 2=original labels
 LABLES = 1
+FORECAST_ONLY = True
 
-_mode_dict = {1: 'drone_training2', 2: 'satellite_training_palletsplus', 3: 'combined_training'}
+_mode_dict = {1: 'drone_training2', 2: 'satellite_training_palletsplus',
+              3: 'combined_training', 4:'drone_angled', 5:'sat_test'}
 _label_dict = {1:'bee_label_map.pbtxt', 2:'mscoco_label_map.pbtxt'}
 MODEL_FOLDER_NAME = _mode_dict[MODE]
 LABEL_FILE_NAME = _label_dict[LABLES]
@@ -25,83 +30,114 @@ def _kill(process):
 
 def new_max_folder_num(base_folder, str_before_num='', str_after_num=''):
     """Find highest numbered folder in models/ folder, and return that number + 1 to use in next folder name."""
-    return str(max([int(folder.replace(str_before_num, '').split(str_after_num)[0]) for folder in os.listdir(base_folder) \
-                    if len(folder.split(str_after_num)) > 1], default=0) + 1)
+    nums = [int(folder.replace(str_before_num, '').split(str_after_num)[0]) for folder in os.listdir(base_folder) \
+                    if len(folder.split(str_after_num)) > 1]
+    print('\n\n', nums)
+    return str(max(nums, default=0) + 1)
 
+
+def new_training_folder(model_folder_name, base_path='C:/Users/Administrator/Desktop/create_training_set/'):
+    """Copies training-default/ to training/ for use for a new round of training"""
+    training_folder_path = base_path + model_folder_name + '/training'
+    shutil.copytree(training_folder_path+'-default', training_folder_path)
+
+
+def rename_training_folder(model_folder_name, steps,
+                           base_path='C:/Users/Administrator/Desktop/create_training_set/'):
+    """Renames the training folder in this model to datetime_training_steps"""
+    training_folder_path = base_path + model_folder_name + '/training'
+    today = datetime.now().strftime("%Y%m%d_%H%M")
+    new_path = base_path + model_folder_name + '/' + today + '-training-' + steps
+    os.rename(training_folder_path, new_path)
 
 if __name__ == "__main__":
-    # Must run from anaconda prompt
+    if FORECAST_ONLY:
+        training_path = 'C:/Users/Administrator/Desktop/create_training_set/' + MODEL_FOLDER_NAME + '/training/'
+        checkpoint_numbers = [checkpoint.replace('.meta', '').split('-')[-1] for checkpoint in os.listdir(training_path) \
+                        if checkpoint.endswith('.meta')]
+        print(checkpoint_numbers)
 
-    #conda_cmd = "C:\ProgramData\Anaconda3\Scripts\conda.exe activate tensorflow"
+    # Run multiple back-to-back sessions with different stopping points
+    for steps in ['542']: #checkpoint_numbers:
+        print("\n\nBeginning model run with "+steps+" steps for model "+MODEL_FOLDER_NAME)
+        # Must run from anaconda prompt
 
-    # Command to start the training process
-    run_model_cmd = "C:/ProgramData/Anaconda3/python \
-        C:/Users/Administrator/Documents/models/research/object_detection/gms_create_training_set/run.py  \
-        --image_directory=C:/Users/Administrator/Desktop/create_training_set/{MODEL_FOLDER} \
-        --model_config=ssd_mobilenet_v1_coco.config \
-        --convert_images={CREATE_TF_RECORDS}"\
-        .format(MODEL_FOLDER=MODEL_FOLDER_NAME, CREATE_TF_RECORDS=CREATE_TF_RECORDS)
-    # Command to start tensorboard to monitor training
-    monitor_cmd = "tensorboard --logdir=C:/Users/Administrator/Desktop/create_training_set/{MODEL_FOLDER}/training"\
-                .format(MODEL_FOLDER=MODEL_FOLDER_NAME)
-    # Change to object_detection directory to run the commands
-    os.chdir('C:/Users/Administrator/Documents/models/research/object_detection/')
-    print(run_model_cmd)
-    ## run training
-    print('\n' + os.getcwd())
-    #conda_env_process = sp.Popen(conda_cmd)
-    print('\n'+run_model_cmd)
-#    run_model_process = sp.Popen(run_model_cmd)
-    ## run monitoring
-#    time.sleep(10)
-    print('\n'+monitor_cmd)
-#    monitor_process = sp.Popen(monitor_cmd)
-    ## when finished training, export model
-    #print('time.sleep(%i)'%(60*MINS_RUNNING))
-    #time.sleep(60*MINS_RUNNING)
-    #_kill(run_model_process)
-#    run_model_process.wait()
+        configfile = 'C:/Users/Administrator/Desktop/create_training_set/' + \
+                     MODEL_FOLDER_NAME + '/training/ssd_mobilenet_v1_coco.config'
+        if not FORECAST_ONLY:
+            # create new training directory
+            new_training_folder(MODEL_FOLDER_NAME)
+            # edit number of steps in config
+            EC.replace_text_in_file(configfile, 'num_steps: 10000', 'num_steps: ' + steps)
 
-    # path to training directory of model in use
-    _training_dir = "C:/Users/Administrator/Desktop/create_training_set/{MODEL_FOLDER}/training/"\
+        # Command to start the training process
+        run_model_cmd = "C:/ProgramData/Anaconda3/python \
+            C:/Users/Administrator/Documents/models/research/object_detection/gms_create_training_set/run.py  \
+            --image_directory=C:/Users/Administrator/Desktop/create_training_set/{MODEL_FOLDER} \
+            --model_config=ssd_mobilenet_v1_coco.config \
+            --convert_images={CREATE_TF_RECORDS}"\
+            .format(MODEL_FOLDER=MODEL_FOLDER_NAME, CREATE_TF_RECORDS=CREATE_TF_RECORDS)
+        # Command to start tensorboard to monitor training
+        monitor_cmd = "tensorboard --logdir=C:/Users/Administrator/Desktop/create_training_set/{MODEL_FOLDER}/training"\
                     .format(MODEL_FOLDER=MODEL_FOLDER_NAME)
-    # path to labels file being used for class labels
-    _path_to_labels = _training_dir + LABEL_FILE_NAME
-    ## checkpoint # equal to max of checkpoints in training
-    _chpt_num = str(max([int(chpt.replace('model.ckpt-', '').split('.index')[0]) \
-                         for chpt in os.listdir(_training_dir) if len(chpt.split('.index')) > 1], default=0))
-    ## export that checkpoint to models folder
-    _base_path = 'C:/Users/Administrator/Desktop/create_training_set/' + MODEL_FOLDER_NAME + '/'
-    _model_dir_path = _base_path + '/models/'
-    _run_num = new_max_folder_num(_model_dir_path, str_before_num='model', str_after_num='-')
-    _run_num = '1'
-    _export_dir_path = _model_dir_path + 'model' + _run_num + '-' + _chpt_num
-    # Command to export checkpoint to frozen graph
-    export_model_cmd = "C:/ProgramData/Anaconda3/python " +\
-                       "C:/Users/Administrator/Desktop/create_training_set/export_model.py " +\
-                       "--checkpoint_num=" + _chpt_num +\
-                       " --export_dir_path=" + _export_dir_path +\
-                       " --model_name=" + MODEL_FOLDER_NAME
-    # Command to use saved frozen graph to forecast on images
-    apply_model_cmd = "C:/ProgramData/Anaconda3/python " +\
-                      "C:/Users/Administrator/Desktop/create_training_set/apply_model.py " +\
-                      "--base_model_path=" + _base_path +\
-                      " --model_name=" + MODEL_FOLDER_NAME +\
-                      " --exported_dir_path=" + _export_dir_path +\
-                      " --min_score_threshold=0.04 " +\
-                      " --path_to_labels=" + _path_to_labels +\
-                      " --outsample_boolean=True" # forecast on outsample folder
-    # EXPORT
-    print('\n'+export_model_cmd)
-#    export_process = sp.Popen(export_model_cmd)
-#    export_process.wait()
-    # FORECAST
-    print('\n'+apply_model_cmd)
-    apply_model_process = sp.Popen(apply_model_cmd)
+        # Change to object_detection directory to run the commands
+        os.chdir('C:/Users/Administrator/Documents/models/research/object_detection/')
+        print(run_model_cmd)
+        ## run training
+        print('\n' + os.getcwd())
+        print('\n'+run_model_cmd)
+        print('\n'+monitor_cmd)
+        if not FORECAST_ONLY:
+            run_model_process = sp.Popen(run_model_cmd)
+            time.sleep(10)
+            monitor_process = sp.Popen(monitor_cmd)
+            run_model_process.wait()
 
-    # Next, pass model folder name apply_model
-    # have apply_model add test_ and train_ to beg of pic names,
-    #   and place in folder with date-name_of_model-iterations in output predictions
+        # path to training directory of model in use
+        _training_dir = "C:/Users/Administrator/Desktop/create_training_set/{MODEL_FOLDER}/training/"\
+                        .format(MODEL_FOLDER=MODEL_FOLDER_NAME)
+        # path to labels file being used for class labels
+        _path_to_labels = _training_dir + LABEL_FILE_NAME
+        ## checkpoint # equal to max of checkpoints in training
+        if not FORECAST_ONLY: _chpt_num = str(max([int(chpt.replace('model.ckpt-', '').split('.index')[0]) \
+                             for chpt in os.listdir(_training_dir) if len(chpt.split('.index')) > 1], default=0))
+        if FORECAST_ONLY: _chpt_num = steps
+        ## export that checkpoint to models folder
+        _base_path = 'C:/Users/Administrator/Desktop/create_training_set/' + MODEL_FOLDER_NAME + '/'
+        _model_dir_path = _base_path + '/models/'
+        _run_num = new_max_folder_num(_model_dir_path, str_before_num='model', str_after_num='-')
+        #_run_num = '1'
+        _export_dir_path = _model_dir_path + 'model' + _run_num + '-' + _chpt_num
+        # Command to export checkpoint to frozen graph
+        export_model_cmd = "C:/ProgramData/Anaconda3/python " +\
+                           "C:/Users/Administrator/Desktop/create_training_set/export_model.py " +\
+                           "--checkpoint_num=" + _chpt_num +\
+                           " --export_dir_path=" + _export_dir_path +\
+                           " --model_name=" + MODEL_FOLDER_NAME
+        # Command to use saved frozen graph to forecast on images
+        apply_model_cmd = "C:/ProgramData/Anaconda3/python " +\
+                          "C:/Users/Administrator/Desktop/create_training_set/apply_model.py " +\
+                          "--base_model_path=" + _base_path +\
+                          " --model_name=" + MODEL_FOLDER_NAME +\
+                          " --exported_dir_path=" + _export_dir_path +\
+                          " --min_score_threshold=0.5 " +\
+                          " --path_to_labels=" + _path_to_labels +\
+                          " --outsample_boolean=True" # forecast on outsample folder
+        # EXPORT
+        print('\n'+export_model_cmd)
+        export_process = sp.Popen(export_model_cmd)
+        export_process.wait()
+        # FORECAST
+        print('\n'+apply_model_cmd)
+        apply_model_process = sp.Popen(apply_model_cmd)
+        apply_model_process.wait()
 
+        if not FORECAST_ONLY:
+            print("Killing tensorboard in 5 seconds")
+            time.sleep(5)
+            monitor_process.kill()
+            time.sleep(5)
+            # Rename training folder
+            rename_training_folder(MODEL_FOLDER_NAME, steps)
 
 

@@ -26,7 +26,6 @@ import numpy as np
 import six.moves.urllib as urllib
 import sys
 import tarfile
-import numpy
 import tensorflow as tf
 import zipfile
 from distutils.version import StrictVersion
@@ -196,7 +195,7 @@ def forecast_on_imagepaths(image_paths_list,
                            output_dir_path,
                            min_score_threshold=0.5,
                            fontsize_increment=8,
-                           fig_scale=1):
+                           fig_scale=1.0):
     """
     Forecasts boxes & classes onto images in image_paths_list using model in export_dir_path.
     :param image_paths_list: list of tuples of (image_name, image_path, image_type) where image_type={TEST, TRAIN}
@@ -226,9 +225,12 @@ def forecast_on_imagepaths(image_paths_list,
     except FileExistsError:
         print("*******************  Output Directory already exists!!!  *******************")
     # Size, in inches, of the output images.
-    image_size = (20 * fig_scale, 12 * fig_scale)
+    image_size = (int(20*fig_scale), int(12*fig_scale))
+    i = 1
+    length = len(all_images)
     for (image_name, image_path, image_type) in all_images:
-        print('**************************************************')
+        print('*********************** starting %s of %s ******************************'%(i,length))
+        i+=1
         print(image_path)
         print(image_type)
         image = Image.open(image_path).convert('RGB')
@@ -258,6 +260,7 @@ def forecast_on_imagepaths(image_paths_list,
         #plt.imshow(image_np)
         image_save_path = output_dir_path + '/' + image_type + '_' + image_name
         plt.imsave(image_save_path, image_np)
+        plt.close('all')
         print('IMAGE SAVED TO: ', image_save_path)
 
 
@@ -291,8 +294,8 @@ if __name__=="__main__":
     _today = datetime.now().strftime("%Y%m%d_%H%M")
     _steps = args.exported_dir_path.split('-')[-1]
     prob_threshold = args.min_score_threshold * 100
-    if prob_threshold <10: prob_threshold = '0'+str(str(args.min_score_threshold*100))
-    else: prob_threshold = str(prob_threshold)
+    if prob_threshold <10: prob_threshold = '0'+str(int(args.min_score_threshold*100))
+    else: prob_threshold = str(int(prob_threshold))
     _save_dir_name = _today + '-' + args.model_name + '-' + _steps + '-' + prob_threshold
     if args.output_dir_path == "":
         _output_dir_path = "C:/Users/Administrator/Desktop/create_training_set/output_predictions/" + _save_dir_name
@@ -305,5 +308,5 @@ if __name__=="__main__":
                            _output_dir_path,        # path to new output directory where images will be saved
                            min_score_threshold=args.min_score_threshold,
                            fontsize_increment=9,
-                           fig_scale=1)
+                           fig_scale=.2)
 
