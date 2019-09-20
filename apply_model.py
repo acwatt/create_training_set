@@ -94,6 +94,17 @@ if RUN_OG_SSD == 4: #base model + training with original categories on drone pic
 # This is needed to display the images.
 #%matplotlib inline
 
+def resize_images_in_dir(directory_path, resize_width, replace=True):
+    """Resizes all images in directory_path to a width of resize_width, keeping aspect ratio
+
+    Usage:
+        resize_images_in_dir("C:/Users/Administrator/imagesfolder", 500)
+
+    Args:
+        directory_path: full path to directory
+        resize_width: width in pixels. 500 seems sufficient for large images
+        replace: when True, replaces all images in directory. When False, just makes resized copies"""
+
 
 
 
@@ -193,9 +204,12 @@ def forecast_on_imagepaths(image_paths_list,
                            export_dir_path,
                            path_to_labels,
                            output_dir_path,
+                           model_name,
+                           steps,
                            min_score_threshold=0.5,
                            fontsize_increment=8,
-                           fig_scale=1.0):
+                           fig_scale=1.0,
+                           resize_width=500):
     """
     Forecasts boxes & classes onto images in image_paths_list using model in export_dir_path.
     :param image_paths_list: list of tuples of (image_name, image_path, image_type) where image_type={TEST, TRAIN}
@@ -205,6 +219,7 @@ def forecast_on_imagepaths(image_paths_list,
     :param min_score_threshold: box predictions larger than this will show on forecasted image
     :param fontsize_increment: >8 will make font larger on images > 1200 px wide
     :param fig_scale: >1 will make final images larger
+    :param resize_width: pixel width to resize images to when saving. Set to 0 to save in original resolution
     :return: None (saves images to output_directory
     """
     path_to_frozen_graph = export_dir_path + '/frozen_inference_graph.pb'
@@ -258,10 +273,21 @@ def forecast_on_imagepaths(image_paths_list,
                 line_thickness=linethickness, min_score_thresh=min_score_threshold, FONTSIZE=fontsize)
         plt.figure(figsize=image_size)
         #plt.imshow(image_np)
-        image_save_path = output_dir_path + '/' + image_type + '_' + image_name
+        image_split = image_name.split('.') # pop off extension
+        image_name, image_ext = ".".join(image_split[:-1]), '.' + image_split[-1] # save filename and ext separately
+        image_save_path = output_dir_path +'/'+ image_type +'-'+ image_name +'-'+ model_name +'-'+ steps + image_ext
+        # Save image
         plt.imsave(image_save_path, image_np)
-        plt.close('all')
+        plt.close('all') # must close, otherwise all figures stay open until done with list of images
         print('IMAGE SAVED TO: ', image_save_path)
+        # Resize image
+        if resize_width > 0:
+            img = Image.open(image_save_path)
+            wpercent = (resize_width / float(img.size[0]))
+            hsize = int((float(img.size[1]) * float(wpercent)))
+            img = img.resize((resize_width, hsize), Image.ANTIALIAS)
+            img.save(image_save_path)
+            print('IMAGE RESIZED TO: ', resize_width)
 
 
 if __name__=="__main__":
@@ -284,11 +310,42 @@ if __name__=="__main__":
     parser.add_argument('--outsample_boolean', metavar='BOOLEAN', type=bool,
                         help='True=forecast on outsample folder, False=do not forecast on outsample folder.',
                         default=False)
+    parser.add_argument('--resize_width', metavar='Pixels', type=int,
+                        help='width in pixels of saved forecasted images.',
+                        default=0)
     args = parser.parse_args()
 
 
     _base_path = args.base_model_path
     _list_of_image_paths = list_of_images_to_forecast(_base_path, outsample_yn=args.outsample_boolean)
+
+
+
+    if 1 == 1:
+        train_list = ['30.014_-94.924.JPG',
+                      '39.135_-77.348.JPG',
+                      '44.333_-101.066.JPG',
+                      'DJI_0051.JPG',
+                      'DJI_0077.JPG',
+                      'DJI_0173.JPG',
+                      'DJI_0528.JPG']
+        temp_list = []
+        for t in _list_of_image_paths:
+            if t[-1] == "OUTSAMPLE" or t[-1] == "TEST":
+                temp_list.append(t)
+                print("image added: ",t[-1], t[0])
+            elif t[-1] == "TRAIN" and t[0] in train_list:
+                temp_list.append(t)
+                print("image added: ", t[-1], t[0])
+            else:
+                print("image not added: ", t[-1], t[0])
+        _list_of_image_paths = temp_list
+
+    if 1 == 0:
+        _list_of_image_paths = [('30.014_-94.924.JPG', 'C:/Users/Administrator/Desktop/create_training_set/satellite_training3//images/train/30.014_-94.924.JPG', 'TRAIN'),
+                                ('30.047_-94.712.JPG', 'C:/Users/Administrator/Desktop/create_training_set/satellite_training3//images/train/30.047_-94.712.JPG', 'TRAIN')]
+
+
 
     # Name the output directory
     _today = datetime.now().strftime("%Y%m%d_%H%M")
@@ -306,7 +363,10 @@ if __name__=="__main__":
                            args.exported_dir_path,        # path to exported frozen graph directory
                            args.path_to_labels,         # path to .pbtxt file with labels in it
                            _output_dir_path,        # path to new output directory where images will be saved
+                           args.model_name,
+                           _steps,
+                           resize_width=args.resize_width,
                            min_score_threshold=args.min_score_threshold,
-                           fontsize_increment=9,
+                           fontsize_increment=8,
                            fig_scale=.2)
 
