@@ -12,9 +12,9 @@ MODE = 5 #int
 # LABELS: 1=custom labels, 2=original coco labels, 3=first 16 original coco lables
 FORECAST_ONLY = True #bool, exports models at checkpoints in _step_list, then forecasts on all picture
 USE_CHECKPOINT_NUMBERS_AS_STEPS = False #bool, only is used when FORECAST_ONLY is True
-EXPORT_MODEL = True #bool
-PROB_THRESHOLD = 0.05 #float
-MODEL_NUM = None #for model3-10000, use 3, int
+EXPORT_MODEL = False #bool
+PROB_THRESHOLD = 0.01 #float
+MODEL_NUM = 1#None #for model3-10000, use 3, int
 TEST_FORECAST = False #bool, only use 2 training images, and no test
 USE_RCNN = 0 #int, 0 or 1
 
@@ -31,7 +31,7 @@ _mode_dict = {1: {'name':'drone_training2',         'description': 'drone pics, 
 steps_to_replace  = '10000'
 _step_list = ['0'] #'3', '100', '200', '500', '1000', '2000', '5000', '10000'
 #_step_list = ['10000']
-_translation_dict = {1:1, 2:1, 3:1, 4:1, 5:1, 6:2, 7:2, 8:3, 9:3}
+_translation_dict = {1:1, 2:1, 3:1, 4:1, 5:2, 6:2, 7:2, 8:3, 9:3}
 _label_dict = {1:'bee_label_map.pbtxt', # uses
                2:'mscoco_label_map.pbtxt',
                3:'mscoco_label_map_3cats.pbtxt'}
@@ -176,24 +176,11 @@ if __name__ == "__main__":
                            "--checkpoint_num=" + _chpt_num +\
                            " --export_dir_path=" + _export_dir_path +\
                            " --model_name=" + MODEL_FOLDER_NAME
-        # Command to use saved frozen graph to forecast on images
-#        apply_model_cmd = "C:/ProgramData/Anaconda3/python " +\
-#                          "C:/Users/Administrator/Desktop/create_training_set/apply_model.py " +\
-#                          "--base_model_path=" + _base_path +\
-#                          " --model_name=" + MODEL_FOLDER_NAME +\
-#                          " --exported_dir_path=" + _export_dir_path +\
-#                          " --min_score_threshold= " + prob_threshold +\
-#                          " --path_to_labels=" + _path_to_labels +\
-#                          " --outsample_boolean=True" +\
-#                          " --resize_width=750" # width of saved forecasted images (to reduce size of output data)
         # EXPORT
         print('\n'+export_model_cmd)
         if EXPORT_MODEL: export_process = sp.Popen(export_model_cmd)
         if EXPORT_MODEL: export_process.wait()
         # FORECAST
-#        print('\n'+apply_model_cmd)
-#        apply_model_process = sp.Popen(apply_model_cmd)
-#        apply_model_process.wait()
         if TEST_FORECAST:
             image_path_list = ([('30.014_-94.924.JPG', 'C:/Users/Administrator/Desktop/create_training_set/satellite_training3//images/train/30.014_-94.924.JPG', 'TRAIN'),
                                 ('30.047_-94.712.JPG', 'C:/Users/Administrator/Desktop/create_training_set/satellite_training3//images/train/30.047_-94.712.JPG', 'TRAIN')],

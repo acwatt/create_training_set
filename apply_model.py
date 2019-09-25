@@ -193,8 +193,8 @@ def list_of_images_to_forecast(model_folder_path, ALL_IMAGES=True, outsample_yn=
             imagefile in
             os.listdir(PATH_TO_OUTSAMPLE_IMAGES_DIR) if imagefile.lower().endswith('.jpg')]
 
-    TOTS_IMAGES = TRAIN_IMAGE_PATHS + TEST_IMAGE_PATHS
-    if outsample_yn: TOTS_IMAGES += OUTSAMPLE_IMAGE_PATHS
+    TOTS_IMAGES = TEST_IMAGE_PATHS + TRAIN_IMAGE_PATHS
+    if outsample_yn: TOTS_IMAGES = OUTSAMPLE_IMAGE_PATHS + TOTS_IMAGES
     print("\n\nIMAGES TO FORECAST ON:")
     for imagefile in TOTS_IMAGES: print(imagefile)
     image_numbers = {'train':len(TRAIN_IMAGE_PATHS), 'test':len(TEST_IMAGE_PATHS), 'outsample':len(OUTSAMPLE_IMAGE_PATHS)}
