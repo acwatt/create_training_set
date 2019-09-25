@@ -197,7 +197,8 @@ def list_of_images_to_forecast(model_folder_path, ALL_IMAGES=True, outsample_yn=
     if outsample_yn: TOTS_IMAGES += OUTSAMPLE_IMAGE_PATHS
     print("\n\nIMAGES TO FORECAST ON:")
     for imagefile in TOTS_IMAGES: print(imagefile)
-    return(TOTS_IMAGES)
+    image_numbers = {'train':len(TRAIN_IMAGE_PATHS), 'test':len(TEST_IMAGE_PATHS), 'outsample':len(OUTSAMPLE_IMAGE_PATHS)}
+    return(TOTS_IMAGES, image_numbers)
 
 
 def forecast_on_imagepaths(image_paths_list,
@@ -262,7 +263,7 @@ def forecast_on_imagepaths(image_paths_list,
         fontsize = int(((image.width - 1200) / 700) * fontsize_increment + 24) #24 is the base font size, increasing in increments of 8pts
         linethickness = int(((image.width - 1200) / 700) + 4)
         # Visualization of the results of a detection.
-        vis_util.visualize_boxes_and_labels_on_image_array(
+        box_num = vis_util.visualize_boxes_and_labels_on_image_array(
                 image_np,
                 output_dict['detection_boxes'],
                 output_dict['detection_classes'],
@@ -270,12 +271,12 @@ def forecast_on_imagepaths(image_paths_list,
                 category_index,
                 instance_masks=output_dict.get('detection_masks'),
                 use_normalized_coordinates=True,
-                line_thickness=linethickness, min_score_thresh=min_score_threshold, FONTSIZE=fontsize)
+                line_thickness=linethickness, min_score_thresh=min_score_threshold, FONTSIZE=fontsize)[1]
         plt.figure(figsize=image_size)
         #plt.imshow(image_np)
         image_split = image_name.split('.') # pop off extension
         image_name, image_ext = ".".join(image_split[:-1]), '.' + image_split[-1] # save filename and ext separately
-        image_save_path = output_dir_path +'/'+ image_type +'-'+ image_name +'-'+ model_name +'-'+ steps + image_ext
+        image_save_path = output_dir_path +'/'+ image_type +'-'+ image_name +'-'+ model_name +'-'+ steps +'s-'+ box_num +'b' + image_ext
         # Save image
         plt.imsave(image_save_path, image_np)
         plt.close('all') # must close, otherwise all figures stay open until done with list of images
@@ -290,6 +291,61 @@ def forecast_on_imagepaths(image_paths_list,
             print('IMAGE RESIZED TO: ', resize_width)
 
 
+def apply_model(exported_dir_path,
+                base_model_path,
+                model_name,
+                path_to_labels,
+                min_score_threshold=0.5,
+                output_dir_path="",
+                outsample_boolean=False,
+                resize_width=0,
+                image_path_list=None):
+    """Forecast the model from exported_dir_path onto images in base_model_path
+
+    Args:
+        exported_dir_path: path of model folder saved from export model (in models folder)
+        base_model_path: path to directory of model being trained (C:/Users/Administrator/Desktop/create_training_set/drone_training2)
+        model_name: name of model directory, like drone_training2
+        path_to_labels: Full path to .pbtxt labels file
+        min_score_threshold: (default=0.5) Give a number between 0 and 1 for the probability threshold to show predicted boxes
+        output_dir_path: (default="") Type full path of directory to save forecasted images to
+        outsample_boolean: (default=False) True=forecast on outsample folder, False=do not forecast on outsample folder.
+        resize_width: (default=0) width in pixels of saved forecasted images.
+
+    Returns:
+        dictionary of number of images forecasted on, key=type, value=number
+    """
+    # List of images to forcast on
+    if image_path_list is None:
+        _list_of_image_paths, image_numbers = list_of_images_to_forecast(base_model_path, outsample_yn=outsample_boolean)
+    else:
+        _list_of_image_paths, image_numbers = image_path_list
+    # Name the output directory
+    _today = datetime.now().strftime("%Y%m%d_%H%M")
+    _steps = exported_dir_path.split('-')[-1]
+    prob_threshold = min_score_threshold * 100
+    if prob_threshold <10: prob_threshold = '0'+str(int(min_score_threshold*100))
+    else: prob_threshold = str(int(prob_threshold))
+    _save_dir_name = _today + '-' + model_name + '-' + _steps + '-' + prob_threshold
+    if output_dir_path == "":
+        _output_dir_path = "C:/Users/Administrator/Desktop/create_training_set/output_predictions/" + _save_dir_name
+    else:
+        _output_dir_path = output_dir_path
+    # Forecast
+    forecast_on_imagepaths(_list_of_image_paths,    # list of tuples: (image_name, image_path, image_type)
+                           exported_dir_path,        # path to exported frozen graph directory
+                           path_to_labels,         # path to .pbtxt file with labels in it
+                           _output_dir_path,        # path to new output directory where images will be saved
+                           model_name,
+                           _steps,
+                           resize_width=resize_width,
+                           min_score_threshold=min_score_threshold,
+                           fontsize_increment=8,
+                           fig_scale=.2)
+    return image_numbers, _output_dir_path
+
+
+
 if __name__=="__main__":
     parser = argparse.ArgumentParser(description='Use a frozen graph of a model to forecast on folders of images.')
     parser.add_argument('--exported_dir_path', metavar='path/to/MODEL#_####', type=str,
@@ -298,30 +354,23 @@ if __name__=="__main__":
                         help='path to directory of model being trained (C:/Users/Administrator/Desktop/create_training_set/drone_training2)')
     parser.add_argument('--model_name', metavar='DIRECTORY NAME', type=str,
                         help='name of model directory, like drone_training2')
-    parser.add_argument('--min_score_threshold', metavar='NUM (0-1)', type=float,
-                        help='Give a number between 0 and 1 for the probability threshold to show predicted boxes',
-                        default=0.5)
-
-    parser.add_argument('--output_dir_path', metavar='DIRECTORY PATH', type=str,
-                        help='Type full path of directory to save forecasted images to (C:/Users/Administrator/Desktop/create_training_set/output_predictions/sat_4categories_2019-09-16)',
-                        default="")
+    parser.add_argument('--min_score_threshold', metavar='NUM (0-1)', type=float, default=0.5,
+                        help='Give a number between 0 and 1 for the probability threshold to show predicted boxes')
+    parser.add_argument('--output_dir_path', metavar='DIRECTORY PATH', type=str, default="",
+                        help='Type full path of directory to save forecasted images to'
+                        '(C:/Users/Administrator/Desktop/create_training_set/output_predictions/sat_4categories_2019-09-16)')
     parser.add_argument('--path_to_labels', metavar='PATH', type=str,
                         help='Full path to .pbtxt labels file')
-    parser.add_argument('--outsample_boolean', metavar='BOOLEAN', type=bool,
-                        help='True=forecast on outsample folder, False=do not forecast on outsample folder.',
-                        default=False)
-    parser.add_argument('--resize_width', metavar='Pixels', type=int,
-                        help='width in pixels of saved forecasted images.',
-                        default=0)
+    parser.add_argument('--outsample_boolean', metavar='BOOLEAN', type=bool, default=False,
+                        help='True=forecast on outsample folder, False=do not forecast on outsample folder.')
+    parser.add_argument('--resize_width', metavar='Pixels', type=int, default=0,
+                        help='width in pixels of saved forecasted images.')
     args = parser.parse_args()
-
 
     _base_path = args.base_model_path
     _list_of_image_paths = list_of_images_to_forecast(_base_path, outsample_yn=args.outsample_boolean)
 
-
-
-    if 1 == 1:
+    if 1 == 0:
         train_list = ['30.014_-94.924.JPG',
                       '39.135_-77.348.JPG',
                       '44.333_-101.066.JPG',
@@ -344,8 +393,6 @@ if __name__=="__main__":
     if 1 == 0:
         _list_of_image_paths = [('30.014_-94.924.JPG', 'C:/Users/Administrator/Desktop/create_training_set/satellite_training3//images/train/30.014_-94.924.JPG', 'TRAIN'),
                                 ('30.047_-94.712.JPG', 'C:/Users/Administrator/Desktop/create_training_set/satellite_training3//images/train/30.047_-94.712.JPG', 'TRAIN')]
-
-
 
     # Name the output directory
     _today = datetime.now().strftime("%Y%m%d_%H%M")
