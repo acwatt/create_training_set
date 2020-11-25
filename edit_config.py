@@ -1,4 +1,7 @@
 #!C:\ProgramData\Anaconda3 python3
+# Author: Aaron Kratzer, 2019
+# Purpose:  to replace items in the model config. files, with extra functions
+#           to replace labels in XML files if the user wants to rename labels.
 import fileinput
 import os
 import time
@@ -6,12 +9,6 @@ import time
 def list_files(extension):
     """list all files in current directory with extension"""
     return [file for file in os.listdir() if len(file.lower().split(extension.lower()))>1]
-
-
-def replace_text_in_file(filename, text_to_search, replacement_text):
-    with fileinput.FileInput(filename, inplace=True) as file:
-        for line in file:
-            print(line.replace(text_to_search, replacement_text), end='')
 
 
 def replace_text_in_file(filename, text_to_search, replacement_text):

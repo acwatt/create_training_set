@@ -16,8 +16,7 @@
 
 
 ###########################################################
-
-#                 IMPORTSS
+#                 IMPORTS
 ###########################################################
 import os
 from object_detection.utils import label_map_util
@@ -26,7 +25,8 @@ import numpy as np
 import six.moves.urllib as urllib
 import sys
 import tarfile
-import tensorflow as tf
+# import tensorflow as tf
+import tensorflow.compat.v1 as tf # for tf2 compatibility
 import zipfile
 from distutils.version import StrictVersion
 from collections import defaultdict
@@ -35,6 +35,7 @@ from matplotlib import pyplot as plt
 from PIL import Image
 import argparse
 from datetime import datetime
+import json
 
 
 # This is needed since the notebook was stored in the object_detection folder.
@@ -88,11 +89,6 @@ if RUN_OG_SSD == 4: #base model + training with original categories on drone pic
     OUTPUT_FOLDER = 'C:/Users/Administrator/Desktop/create_training_set/output_predictions/drone_OGcategories'
 
 """
-
-
-
-# This is needed to display the images.
-#%matplotlib inline
 
 def resize_images_in_dir(directory_path, resize_width, replace=True):
     """Resizes all images in directory_path to a width of resize_width, keeping aspect ratio
@@ -171,8 +167,8 @@ def list_of_images_to_forecast(model_folder_path, ALL_IMAGES=True, outsample_yn=
     PATH_TO_OUTSAMPLE_IMAGES_DIR = BASE_PATH + '/images/outsample/'
 
     if not ALL_IMAGES:
-        train_images = ['DJI_0017.JPG']  # , 'DJI_0516.JPG']
-        test_images = ['DJI_0176.JPG']  # , 'DJI_0413.JPG']
+        train_images = ['DJI_0652.JPG', 'DJI_0508.JPG', 'DJI_0365.JPG']
+        test_images = ['DJI_0017.JPG' , 'DJI_0722.JPG']
         outsample_images = ['DJI_0017.JPG', 'DJI_0516_adj.JPG']
 
         TRAIN_IMAGE_PATHS = [(image + '.png', os.path.join(PATH_TO_TRAIN_IMAGES_DIR, image), 'TRAIN') for image in
@@ -200,6 +196,25 @@ def list_of_images_to_forecast(model_folder_path, ALL_IMAGES=True, outsample_yn=
     image_numbers = {'train':len(TRAIN_IMAGE_PATHS), 'test':len(TEST_IMAGE_PATHS), 'outsample':len(OUTSAMPLE_IMAGE_PATHS)}
     return(TOTS_IMAGES, image_numbers)
 
+# not used currently
+def save_forecasted_boxes(boxes_dict, save_dir, filename='output_boxes.json'):
+    """Save a json dictionary of forecasted boxes, classes, and detection scores to a CSV in save_dir"""
+    filepath = os.path.join(save_dir, filename)
+    dict = {}
+    for key in boxes_dict:
+        if isinstance(boxes_dict[key], np.ndarray):
+            if boxes_dict[key].ndim == 2:
+                list_ = [list([str(i) for i in row]) for row in boxes_dict[key]]
+            elif boxes_dict[key].ndim == 1:
+                list_ = list([str(i) for i in boxes_dict[key]])
+            else:
+                print('Dimensions of box dictionary is larger than 2.')
+            dict[key] = list_
+        else:
+            dict[key] = boxes_dict[key]
+    with open(filepath, "w") as outfile:
+        json.dump(dict, outfile, separators=(',', ':'), indent = 4)
+
 
 def forecast_on_imagepaths(image_paths_list,
                            export_dir_path,
@@ -210,9 +225,15 @@ def forecast_on_imagepaths(image_paths_list,
                            min_score_threshold=0.5,
                            fontsize_increment=8,
                            fig_scale=1.0,
-                           resize_width=500):
+                           resize_width=500,
+                           custom_lables=True,
+                           number_box_ids=[],
+                           miteloadapp=False,
+                           verbose=False,
+                           ):
     """
     Forecasts boxes & classes onto images in image_paths_list using model in export_dir_path.
+    :param custom_lables: boolean for using 'hive' and 'apiary' in labels drawn on image
     :param image_paths_list: list of tuples of (image_name, image_path, image_type) where image_type={TEST, TRAIN}
     :param export_dir_path: path to exported frozen graph from model
     :param path_to_labels: path to .pbtxt file with class labels for predicted boxes
@@ -227,6 +248,8 @@ def forecast_on_imagepaths(image_paths_list,
     detection_graph = tf.Graph()
 
     with detection_graph.as_default():
+        # od_graph_def = tf.compat.v1.GraphDef() # updated from tf.GraphDef() for tf v2 compatility
+        # with tf.io.gfile.GFile(path_to_frozen_graph, 'rb') as fid: # updated from tf.gfile.GFile for tf v2 compatibility
         od_graph_def = tf.GraphDef()
         with tf.gfile.GFile(path_to_frozen_graph, 'rb') as fid:
             serialized_graph = fid.read()
@@ -234,16 +257,23 @@ def forecast_on_imagepaths(image_paths_list,
             tf.import_graph_def(od_graph_def, name='')
 
     category_index = label_map_util.create_category_index_from_labelmap(path_to_labels, use_display_name=True)
+    if custom_lables:
+        category_index = {
+            1: {'id': 1, 'name': 'apiary'},
+            15: {'id': 15, 'name': 'structure'},
+            16: {'id': 16, 'name': 'hive'},
+        }
     all_images = image_paths_list
     # make output directory
     try:
         os.mkdir(output_dir_path)
     except FileExistsError:
-        print("*******************  Output Directory already exists!!!  *******************")
+        print("*******************  Output Directory already exists  *******************")
     # Size, in inches, of the output images.
     image_size = (int(20*fig_scale), int(12*fig_scale))
     i = 1
     length = len(all_images)
+    boxes_dict = {}
     for (image_name, image_path, image_type) in all_images:
         print('*********************** starting %s of %s ******************************'%(i,length))
         i+=1
@@ -252,18 +282,21 @@ def forecast_on_imagepaths(image_paths_list,
         image = Image.open(image_path).convert('RGB')
         # the array based representation of the image will be used later in order to prepare the
         # result image with boxes and labels on it.
-        print(image.getdata())
+        #print(image.getdata())
         #np.array(image.getdata())
         image_np = load_image_into_numpy_array(image)
         # Expand dimensions since the model expects images to have shape: [1, None, None, 3]
         image_np_expanded = np.expand_dims(image_np, axis=0)
         # Actual detection.
         output_dict = run_inference_for_single_image(image_np, detection_graph)
+        #save_forecasted_boxes(output_dict, output_dir_path)
+        boxes_dict[image_name] = output_dict
+        boxes_dict[image_name]['input_image_path'] = image_path
         # fontize dependent on the width of the image in pixels
         fontsize = int(((image.width - 1200) / 700) * fontsize_increment + 24) #24 is the base font size, increasing in increments of 8pts
         linethickness = int(((image.width - 1200) / 700) + 4)
         # Visualization of the results of a detection.
-        box_num = vis_util.visualize_boxes_and_labels_on_image_array(
+        box_num, box_numbers = vis_util.visualize_boxes_and_labels_on_image_array(
                 image_np,
                 output_dict['detection_boxes'],
                 output_dict['detection_classes'],
@@ -271,12 +304,24 @@ def forecast_on_imagepaths(image_paths_list,
                 category_index,
                 instance_masks=output_dict.get('detection_masks'),
                 use_normalized_coordinates=True,
-                line_thickness=linethickness, min_score_thresh=min_score_threshold, FONTSIZE=fontsize)[1]
+                line_thickness=linethickness,
+                min_score_thresh=min_score_threshold,
+                FONTSIZE=fontsize,
+                number_box_ids=number_box_ids,
+                verbose=verbose,
+        )[1:]
         plt.figure(figsize=image_size)
         #plt.imshow(image_np)
+        full_image_name = image_name
         image_split = image_name.split('.') # pop off extension
         image_name, image_ext = ".".join(image_split[:-1]), '.' + image_split[-1] # save filename and ext separately
         image_save_path = output_dir_path +'/'+ image_type +'-'+ image_name +'-'+ model_name +'-'+ steps +'s-'+ box_num +'b' + image_ext
+        if miteloadapp:
+            today_ = datetime.now().strftime("%Y-%m-%d")
+            image_save_path = f'{output_dir_path}/{image_name}_processed_{today_}{image_ext}'
+        boxes_dict[full_image_name]['annotated_image_path'] = image_save_path
+        boxes_dict[full_image_name]['box_numbers'] = box_numbers
+        boxes_dict[full_image_name]['number_of_boxes_drawn'] = int(box_num)
         # Save image
         plt.imsave(image_save_path, image_np)
         plt.close('all') # must close, otherwise all figures stay open until done with list of images
@@ -290,6 +335,8 @@ def forecast_on_imagepaths(image_paths_list,
             img.save(image_save_path)
             print('IMAGE RESIZED TO: ', resize_width)
 
+    return boxes_dict
+
 
 def apply_model(exported_dir_path,
                 base_model_path,
@@ -299,7 +346,12 @@ def apply_model(exported_dir_path,
                 output_dir_path="",
                 outsample_boolean=False,
                 resize_width=0,
-                image_path_list=None):
+                image_path_list=None,
+                custom_lables=True,
+                number_box_ids=[],
+                miteloadapp=False,
+                verbose=False,
+                ):
     """Forecast the model from exported_dir_path onto images in base_model_path
 
     Args:
@@ -317,7 +369,11 @@ def apply_model(exported_dir_path,
     """
     # List of images to forcast on
     if image_path_list is None:
-        _list_of_image_paths, image_numbers = list_of_images_to_forecast(base_model_path, outsample_yn=outsample_boolean)
+        _list_of_image_paths, image_numbers = list_of_images_to_forecast(
+            base_model_path,
+            outsample_yn=outsample_boolean,
+            ALL_IMAGES=True,
+        )
     else:
         _list_of_image_paths, image_numbers = image_path_list
     # Name the output directory
@@ -332,7 +388,7 @@ def apply_model(exported_dir_path,
     else:
         _output_dir_path = output_dir_path
     # Forecast
-    forecast_on_imagepaths(_list_of_image_paths,    # list of tuples: (image_name, image_path, image_type)
+    boxes_dict = forecast_on_imagepaths(_list_of_image_paths,    # list of tuples: (image_name, image_path, image_type)
                            exported_dir_path,        # path to exported frozen graph directory
                            path_to_labels,         # path to .pbtxt file with labels in it
                            _output_dir_path,        # path to new output directory where images will be saved
@@ -341,8 +397,13 @@ def apply_model(exported_dir_path,
                            resize_width=resize_width,
                            min_score_threshold=min_score_threshold,
                            fontsize_increment=8,
-                           fig_scale=.2)
-    return image_numbers, _output_dir_path
+                           fig_scale=.2,
+                           custom_lables=True,
+                           number_box_ids=number_box_ids,
+                           miteloadapp=miteloadapp,
+                           verbose=verbose,
+                                        )
+    return image_numbers, _output_dir_path, boxes_dict
 
 
 
@@ -370,28 +431,27 @@ if __name__=="__main__":
     _base_path = args.base_model_path
     _list_of_image_paths = list_of_images_to_forecast(_base_path, outsample_yn=args.outsample_boolean)
 
-    if 1 == 0:
-        train_list = ['30.014_-94.924.JPG',
-                      '39.135_-77.348.JPG',
-                      '44.333_-101.066.JPG',
-                      'DJI_0051.JPG',
-                      'DJI_0077.JPG',
-                      'DJI_0173.JPG',
-                      'DJI_0528.JPG']
-        temp_list = []
-        for t in _list_of_image_paths:
-            if t[-1] == "OUTSAMPLE" or t[-1] == "TEST":
-                temp_list.append(t)
-                print("image added: ",t[-1], t[0])
-            elif t[-1] == "TRAIN" and t[0] in train_list:
-                temp_list.append(t)
-                print("image added: ", t[-1], t[0])
-            else:
-                print("image not added: ", t[-1], t[0])
-        _list_of_image_paths = temp_list
+        # train_list = ['30.014_-94.924.JPG',
+        #               '39.135_-77.348.JPG',
+        #               '44.333_-101.066.JPG',
+        #               'DJI_0051.JPG',
+        #               'DJI_0077.JPG',
+        #               'DJI_0173.JPG',
+        #               'DJI_0528.JPG']
+        # temp_list = []
+        # for t in _list_of_image_paths:
+        #     if t[-1] == "OUTSAMPLE" or t[-1] == "TEST":
+        #         temp_list.append(t)
+        #         print("image added: ",t[-1], t[0])
+        #     elif t[-1] == "TRAIN" and t[0] in train_list:
+        #         temp_list.append(t)
+        #         print("image added: ", t[-1], t[0])
+        #     else:
+        #         print("image not added: ", t[-1], t[0])
+        # list_of_image_paths = temp_list
 
-    if 1 == 0:
-        _list_of_image_paths = [('30.014_-94.924.JPG', 'C:/Users/Administrator/Desktop/create_training_set/satellite_training3//images/train/30.014_-94.924.JPG', 'TRAIN'),
+
+    list_of_image_paths = [('30.014_-94.924.JPG', 'C:/Users/Administrator/Desktop/create_training_set/satellite_training3//images/train/30.014_-94.924.JPG', 'TRAIN'),
                                 ('30.047_-94.712.JPG', 'C:/Users/Administrator/Desktop/create_training_set/satellite_training3//images/train/30.047_-94.712.JPG', 'TRAIN')]
 
     # Name the output directory
@@ -406,14 +466,16 @@ if __name__=="__main__":
     else:
         _output_dir_path = args.output_dir_path
 
-    forecast_on_imagepaths(_list_of_image_paths,    # list of tuples: (image_name, image_path, image_type)
-                           args.exported_dir_path,        # path to exported frozen graph directory
-                           args.path_to_labels,         # path to .pbtxt file with labels in it
+    forecast_on_imagepaths(list_of_image_paths,    # list of tuples: (image_name, image_path, image_type)
+                           args.exported_dir_path,  # path to exported frozen graph directory
+                           args.path_to_labels,     # path to .pbtxt file with labels in it
                            _output_dir_path,        # path to new output directory where images will be saved
                            args.model_name,
                            _steps,
                            resize_width=args.resize_width,
                            min_score_threshold=args.min_score_threshold,
                            fontsize_increment=8,
-                           fig_scale=.2)
+                           fig_scale=.2,
+                           custom_lables=True,
+                           )
 
