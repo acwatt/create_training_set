@@ -227,6 +227,7 @@ def forecast_on_imagepaths(image_paths_list,
                            fig_scale=1.0,
                            resize_width=500,
                            custom_lables=True,
+                           hive_label=True,
                            number_box_ids=[],
                            miteloadapp=False,
                            verbose=False,
@@ -234,6 +235,7 @@ def forecast_on_imagepaths(image_paths_list,
     """
     Forecasts boxes & classes onto images in image_paths_list using model in export_dir_path.
     :param custom_lables: boolean for using 'hive' and 'apiary' in labels drawn on image
+    :param hive_label: boolean to keep 'hive' in labeling of hive on image. If False, only number will be displayed.
     :param image_paths_list: list of tuples of (image_name, image_path, image_type) where image_type={TEST, TRAIN}
     :param export_dir_path: path to exported frozen graph from model
     :param path_to_labels: path to .pbtxt file with class labels for predicted boxes
@@ -259,10 +261,12 @@ def forecast_on_imagepaths(image_paths_list,
     category_index = label_map_util.create_category_index_from_labelmap(path_to_labels, use_display_name=True)
     if custom_lables:
         category_index = {
-            1: {'id': 1, 'name': 'apiary'},
-            15: {'id': 15, 'name': 'structure'},
-            16: {'id': 16, 'name': 'hive'},
+            1: {'id': 1, 'name': 'apiary '},
+            15: {'id': 15, 'name': 'structure '},
+            16: {'id': 16, 'name': 'hive '},
         }
+        if not hive_label: # remove 'hive' from label, to just leave number (for readability)
+            category_index[16]['name'] = ''
     all_images = image_paths_list
     # make output directory
     try:
@@ -348,6 +352,7 @@ def apply_model(exported_dir_path,
                 resize_width=0,
                 image_path_list=None,
                 custom_lables=True,
+                hive_label=True,
                 number_box_ids=[],
                 miteloadapp=False,
                 verbose=False,
@@ -399,6 +404,7 @@ def apply_model(exported_dir_path,
                            fontsize_increment=8,
                            fig_scale=.2,
                            custom_lables=True,
+                           hive_label=hive_label,
                            number_box_ids=number_box_ids,
                            miteloadapp=miteloadapp,
                            verbose=verbose,
