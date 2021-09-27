@@ -232,8 +232,8 @@ def forecast_on_imagepaths(image_paths_list,
                            miteloadapp=False,
                            verbose=False,
                            ):
-    """
-    Forecasts boxes & classes onto images in image_paths_list using model in export_dir_path.
+    """Forecasts boxes & classes onto images in image_paths_list using model in export_dir_path.
+
     :param custom_lables: boolean for using 'hive' and 'apiary' in labels drawn on image
     :param hive_label: boolean to keep 'hive' in labeling of hive on image. If False, only number will be displayed.
     :param image_paths_list: list of tuples of (image_name, image_path, image_type) where image_type={TEST, TRAIN}

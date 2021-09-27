@@ -18,6 +18,8 @@ from datetime import datetime
 import time
 import subprocess as sp
 import shutil
+import pickle
+
 import edit_config as EC
 import apply_model
 from miteloadapp_modules.extract_metadata import get_metadata_dict
@@ -271,6 +273,11 @@ if __name__ == "__main__":
         number_box_ids=[16]
     )
 
+    with open(f'{_output_dir_path}/DJI0346_output_example.pickle', 'wb') as f:
+        # Pickle the 'data' dictionary using the highest protocol available.
+        pickle.dump(image_box_dict, f, pickle.HIGHEST_PROTOCOL)
+
+    fdsajfods;
 
     import miteloadapp_modules.get_geometry as geo
     for image in image_box_dict.keys():
